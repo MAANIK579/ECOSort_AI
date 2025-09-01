@@ -114,7 +114,7 @@ def start_flask_app():
         os.chdir('backend')
         
         # Import and run the app
-        from . import app
+        import app
         app.run(debug=True, host='0.0.0.0', port=5000)
         
     except ImportError as e:
