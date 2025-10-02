@@ -14,6 +14,7 @@ import {
   InputLabel,
   CircularProgress,
   Alert,
+  Button,
 } from '@mui/material';
 import {
   TrendingUp as TrendingIcon,
@@ -52,6 +53,12 @@ const Analytics = () => {
     fetchAnalytics();
   }, [dateRange]);
 
+  // Add a retry mechanism for failed requests
+  const retryFetchAnalytics = () => {
+    setError(null);
+    fetchAnalytics();
+  };
+
   const fetchAnalytics = async () => {
     setLoading(true);
     setError(null);
@@ -62,16 +69,24 @@ const Analytics = () => {
         .toISOString()
         .split('T')[0];
 
+      console.log('Fetching analytics for date range:', startDate, 'to', endDate);
+      
       const response = await axios.get('/analytics', {
         params: {
           start_date: startDate,
           end_date: endDate,
         },
+        timeout: 10000, // 10 second timeout
       });
 
+      console.log('Analytics response:', response.data);
       setAnalyticsData(response.data);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to fetch analytics data');
+      console.error('Analytics fetch error:', err);
+      const errorMessage = err.response?.data?.error || 
+                          err.message || 
+                          'Failed to fetch analytics data';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -110,9 +125,20 @@ const Analytics = () => {
   if (error) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Alert severity="error" sx={{ mb: 3 }}>
+        <Alert 
+          severity="error" 
+          sx={{ mb: 3 }}
+          action={
+            <Button color="inherit" size="small" onClick={retryFetchAnalytics}>
+              Retry
+            </Button>
+          }
+        >
           {error}
         </Alert>
+        <Typography variant="body2" color="text.secondary" textAlign="center">
+          Make sure the backend server is running on port 5000
+        </Typography>
       </Container>
     );
   }
@@ -127,18 +153,18 @@ const Analytics = () => {
     );
   }
 
-  const pieChartData = Object.entries(analyticsData.category_distribution).map(([category, count]) => ({
+  const pieChartData = Object.entries(analyticsData.category_distribution || {}).map(([category, count]) => ({
     name: category.charAt(0).toUpperCase() + category.slice(1),
     value: count,
     color: getCategoryColor(category),
-  }));
+  })).filter(item => item.value > 0); // Only show categories with data
 
-  const lineChartData = analyticsData.daily_statistics.map((day) => ({
+  const lineChartData = (analyticsData.daily_statistics || []).map((day) => ({
     date: formatDate(day.date),
-    biodegradable: day.biodegradable,
-    recyclable: day.recyclable,
-    hazardous: day.hazardous,
-    total: day.total,
+    biodegradable: day.biodegradable || 0,
+    recyclable: day.recyclable || 0,
+    hazardous: day.hazardous || 0,
+    total: day.total || 0,
   }));
 
   const barChartData = [
@@ -253,25 +279,34 @@ const Analytics = () => {
                 <PieChartIcon sx={{ mr: 1 }} />
                 Category Distribution
               </Typography>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={pieChartData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {pieChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              {pieChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={pieChartData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {pieChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+                  <PieChartIcon sx={{ fontSize: 64, color: 'grey.400', mb: 2 }} />
+                  <Typography variant="body2" color="text.secondary">
+                    No data available for the selected period
+                  </Typography>
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>

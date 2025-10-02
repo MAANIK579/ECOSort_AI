@@ -1,8 +1,14 @@
 import re
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.pipeline import Pipeline
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.naive_bayes import MultinomialNB
+    from sklearn.pipeline import Pipeline
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+    print("scikit-learn not available, using fallback text classification")
+
 import pickle
 import os
 
@@ -11,7 +17,11 @@ class TextClassifier:
         self.model = None
         self.categories = ['biodegradable', 'recyclable', 'hazardous']
         self.waste_keywords = self._load_waste_keywords()
-        self.load_model()
+        self.sklearn_available = SKLEARN_AVAILABLE
+        if self.sklearn_available:
+            self.load_model()
+        else:
+            print("scikit-learn not available, using keyword-based classification")
     
     def _load_waste_keywords(self):
         """Define waste keywords for each category"""
@@ -41,6 +51,9 @@ class TextClassifier:
     
     def load_model(self):
         """Load the pre-trained model or create a new one"""
+        if not self.sklearn_available:
+            return
+            
         model_path = 'models/text_classifier_model.pkl'
         
         if os.path.exists(model_path):
@@ -48,8 +61,8 @@ class TextClassifier:
                 with open(model_path, 'rb') as f:
                     self.model = pickle.load(f)
                 print("Loaded pre-trained text classification model")
-            except:
-                print("Error loading model, creating new one")
+            except Exception as e:
+                print(f"Error loading model: {e}, creating new one")
                 self.create_model()
         else:
             print("No pre-trained model found, creating new one")
@@ -57,20 +70,27 @@ class TextClassifier:
     
     def create_model(self):
         """Create a new text classification model"""
-        # Create a simple pipeline with TF-IDF and Naive Bayes
-        self.model = Pipeline([
-            ('tfidf', TfidfVectorizer(
-                max_features=1000,
-                stop_words='english',
-                ngram_range=(1, 2)
-            )),
-            ('classifier', MultinomialNB())
-        ])
-        
-        # Train with keyword-based data
-        self._train_with_keywords()
-        
-        print("Created new text classification model")
+        if not self.sklearn_available:
+            return
+            
+        try:
+            # Create a simple pipeline with TF-IDF and Naive Bayes
+            self.model = Pipeline([
+                ('tfidf', TfidfVectorizer(
+                    max_features=1000,
+                    stop_words='english',
+                    ngram_range=(1, 2)
+                )),
+                ('classifier', MultinomialNB())
+            ])
+            
+            # Train with keyword-based data
+            self._train_with_keywords()
+            
+            print("Created new text classification model")
+        except Exception as e:
+            print(f"Error creating scikit-learn model: {e}")
+            self.model = None
     
     def _train_with_keywords(self):
         """Train the model using keyword-based synthetic data"""
@@ -118,6 +138,9 @@ class TextClassifier:
     
     def predict(self, text):
         """Predict waste category from text"""
+        if not self.sklearn_available or self.model is None:
+            return self._fallback_classification(text)
+            
         try:
             # Preprocess text
             processed_text = self.preprocess_text(text)
