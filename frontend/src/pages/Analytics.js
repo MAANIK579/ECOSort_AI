@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -49,17 +49,7 @@ const Analytics = () => {
 
   const COLORS = ['#4CAF50', '#2196F3', '#F44336'];
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, [dateRange]);
-
-  // Add a retry mechanism for failed requests
-  const retryFetchAnalytics = () => {
-    setError(null);
-    fetchAnalytics();
-  };
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -90,7 +80,47 @@ const Analytics = () => {
     } finally {
       setLoading(false);
     }
+  }, [dateRange]);
+
+  // Add a retry mechanism for failed requests
+  const retryFetchAnalytics = () => {
+    setError(null);
+    fetchAnalytics();
   };
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  // Add WebSocket connection for real-time updates
+  useEffect(() => {
+    const ws = new WebSocket('ws://localhost:5000/ws');
+    
+    ws.onopen = () => {
+      console.log('WebSocket connected for real-time analytics');
+    };
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'classification_update') {
+        console.log('Real-time classification update received:', data);
+        // Refresh analytics data when new classification is made
+        fetchAnalytics();
+      }
+    };
+    
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+    };
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+    
+    return () => {
+      ws.close();
+    };
+  }, [fetchAnalytics]);
 
   const getCategoryColor = (category) => {
     switch (category?.toLowerCase()) {
@@ -170,17 +200,17 @@ const Analytics = () => {
   const barChartData = [
     {
       name: 'Biodegradable',
-      count: analyticsData.category_distribution.biodegradable || 0,
+      count: analyticsData.category_distribution?.biodegradable || 0,
       color: '#4CAF50',
     },
     {
       name: 'Recyclable',
-      count: analyticsData.category_distribution.recyclable || 0,
+      count: analyticsData.category_distribution?.recyclable || 0,
       color: '#2196F3',
     },
     {
       name: 'Hazardous',
-      count: analyticsData.category_distribution.hazardous || 0,
+      count: analyticsData.category_distribution?.hazardous || 0,
       color: '#F44336',
     },
   ];
@@ -192,6 +222,12 @@ const Analytics = () => {
         <Typography variant="h4" component="h1" gutterBottom>
           Analytics Dashboard
         </Typography>
+        <Chip 
+          label="Real-time Updates" 
+          color="success" 
+          size="small" 
+          sx={{ ml: 2 }}
+        />
       </Box>
       <Typography variant="h6" color="text.secondary" textAlign="center" sx={{ mb: 6 }}>
         Track waste generation patterns and environmental impact over time
@@ -233,7 +269,7 @@ const Analytics = () => {
             <CardContent sx={{ textAlign: 'center' }}>
               <TrendingIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
               <Typography variant="h4" component="div" fontWeight="bold" color="primary.main">
-                {analyticsData.category_distribution.biodegradable || 0}
+                {analyticsData.category_distribution?.biodegradable || 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Biodegradable
@@ -246,7 +282,7 @@ const Analytics = () => {
             <CardContent sx={{ textAlign: 'center' }}>
               <BarChartIcon sx={{ fontSize: 40, color: 'info.main', mb: 1 }} />
               <Typography variant="h4" component="div" fontWeight="bold" color="info.main">
-                {analyticsData.category_distribution.recyclable || 0}
+                {analyticsData.category_distribution?.recyclable || 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Recyclable
@@ -259,7 +295,7 @@ const Analytics = () => {
             <CardContent sx={{ textAlign: 'center' }}>
               <TimelineIcon sx={{ fontSize: 40, color: 'error.main', mb: 1 }} />
               <Typography variant="h4" component="div" fontWeight="bold" color="error.main">
-                {analyticsData.category_distribution.hazardous || 0}
+                {analyticsData.category_distribution?.hazardous || 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Hazardous
@@ -393,9 +429,14 @@ const Analytics = () => {
                 </Typography>
                 <Typography variant="body1">
                   {(() => {
-                    const maxCategory = Object.entries(analyticsData.category_distribution).reduce(
-                      (a, b) => (a[1] > b[1] ? a : b)
-                    );
+                    if (!analyticsData.category_distribution || !analyticsData.total_classifications) {
+                      return 'No classification data available.';
+                    }
+                    const entries = Object.entries(analyticsData.category_distribution);
+                    if (entries.length === 0) {
+                      return 'No classification data available.';
+                    }
+                    const maxCategory = entries.reduce((a, b) => (a[1] > b[1] ? a : b));
                     return `${maxCategory[0].charAt(0).toUpperCase() + maxCategory[0].slice(1)} items are the most frequently classified, making up ${((maxCategory[1] / analyticsData.total_classifications) * 100).toFixed(1)}% of all classifications.`;
                   })()}
                 </Typography>
@@ -429,11 +470,10 @@ const Analytics = () => {
         </Grid>
       </Box>
 
-      {/* Date Range Info */}
       <Box sx={{ mt: 4, textAlign: 'center' }}>
         <Typography variant="body2" color="text.secondary">
           <CalendarIcon sx={{ fontSize: 16, verticalAlign: 'middle', mr: 0.5 }} />
-          Data shown for {formatDate(analyticsData.date_range.start)} to {formatDate(analyticsData.date_range.end)}
+          Data shown for {analyticsData.date_range?.start ? formatDate(analyticsData.date_range.start) : 'N/A'} to {analyticsData.date_range?.end ? formatDate(analyticsData.date_range.end) : 'N/A'}
         </Typography>
       </Box>
     </Container>
